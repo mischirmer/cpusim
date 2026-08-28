@@ -71,6 +71,16 @@ export function App() {
     if (!ex) return;
     setExampleId(id);
     setSource(ex.source);
+    setForwarding(ex.forwarding ?? false);
+    if (ex.initialState) {
+      setInitRegs(Array.from({ length: 16 }, (_, i) => ex.initialState!.registers?.[i] ?? 0));
+      setInitFlags({
+        Z: ex.initialState.flags?.Z ?? false,
+        N: ex.initialState.flags?.N ?? false,
+        C: ex.initialState.flags?.C ?? false,
+      });
+      setInitMemory(ex.initialState.memory ?? new Map());
+    }
     invalidate();
   };
 

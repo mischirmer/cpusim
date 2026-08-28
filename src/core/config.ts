@@ -9,7 +9,7 @@ export interface ProcessorConfig {
     flagReadStage: "OF";
     flagWriteStage: "EX";
     branchResolveStage: "EX";
-    sameCycleWbToOfVisible: true;
+    sameCycleWbToOfVisible: false;
   };
   branches: {
     speculativeSequentialFetch: true;
@@ -32,7 +32,7 @@ export const DEFAULT_CONFIG: ProcessorConfig = {
     flagReadStage: "OF",
     flagWriteStage: "EX",
     branchResolveStage: "EX",
-    sameCycleWbToOfVisible: true,
+    sameCycleWbToOfVisible: false,
   },
   branches: { speculativeSequentialFetch: true, prediction: "none" },
   memory: { addressBits: 16, endianness: "big" },

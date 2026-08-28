@@ -20,14 +20,15 @@ test("Hauptablauf: Pipeline, Stall, Forwarding, Sprung und Register", async ({ p
   await page.getByTestId("example-select").selectOption("raw");
   await expect(page.locator("td.stall").first()).toBeVisible();
 
-  // Zum Stall-Takt (5) navigieren -> deutsche Erklärung
-  await setCycle(page, "5");
-  await expect(page.getByTestId("cycle-indicator")).toContainText("Takt 5");
+  // Zum Stall-Takt (4) navigieren -> deutsche Erklärung
+  await setCycle(page, "4");
+  await expect(page.getByTestId("cycle-indicator")).toContainText("Takt 4");
   await expect(page.getByTestId("explanation-panel")).toContainText("Stall");
 
-  // Forwarding aktivieren -> der Stall verschwindet, Statistik zeigt 0 Stalls
-  await page.getByTestId("forwarding-toggle").check();
-  await expect(page.getByTestId("statistics-view")).toContainText("Stall-Takte: 0");
+  // Mit aktivem Forwarding (Forwarding-Beispiel) wird der Toggle automatisch
+  // aktiviert und die weitergeleiteten Operanden werden erklärt.
+  await page.getByTestId("example-select").selectOption("raw-forwarding");
+  await expect(page.getByTestId("forwarding-toggle")).toBeChecked();
   await setCycle(page, "5");
   await expect(page.getByTestId("explanation-panel")).toContainText("Forwarding");
 

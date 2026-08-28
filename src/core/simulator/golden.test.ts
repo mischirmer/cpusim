@@ -3,7 +3,7 @@ import { statusMatrix, finalRegisters } from "../testutil";
 
 // The uploaded exam pattern (implementation.md §38.1) applied to a concrete program:
 //   I1 ldi %r1 $5
-//   I2 add %r2 %r1 %r4   (RAW on %r1 -> one-cycle stall under finalized same-cycle WB->OF)
+//   I2 add %r2 %r1 %r4   (RAW on %r1 -> two-cycle stall, end-of-WB visibility)
 //   I3 b  $2              (taken branch)
 //   I4 xor ...             (wrong path, flushed)
 //   I5 nop ...             (wrong path, flushed)
@@ -24,20 +24,21 @@ hlt
 `;
 
 describe("golden — exam RAW + taken branch (structural)", () => {
-  it("shows a one-cycle RAW stall, flushes all younger wrong-path, and runs the target", () => {
+  it("shows a two-cycle RAW stall, flushes all younger wrong-path, and runs the target", () => {
     const { matrix, result } = statusMatrix(EXAM);
     const [i1, i2] = matrix;
 
-    // I1 flows through 5 stages; I2 consumes it with one stall (RAW, same-cycle WB->OF)
+    // I1 flows through 5 stages; I2 consumes it with a two-cycle stall (RAW, end-of-WB)
     expect(i1[1]).toBe("IF");
     expect(i1[5]).toBe("WB");
     expect(i2[2]).toBe("IF");
     expect(i2[3]).toBe("ID");
-    expect(i2[4]).toBe("OF");
+    expect(i2[4]).toBe("stall");
     expect(i2[5]).toBe("stall");
-    expect(i2[6]).toBe("EX");
-    expect(i2[7]).toBe("WB");
-    expect(result.statistics.stallCycles).toBe(1);
+    expect(i2[6]).toBe("OF");
+    expect(i2[7]).toBe("EX");
+    expect(i2[8]).toBe("WB");
+    expect(result.statistics.stallCycles).toBe(2);
 
     // I3 is the taken branch; it produces exactly one flush EVENT
     const b = result.dynamicInstructions.find((d) => d.address === 4 && d.mnemonic === "b")!;
@@ -160,8 +161,8 @@ hlt
     // CPI = lastUsefulCycle / completed useful instructions. The flushed wrong-path
     // instructions do not count in the denominator, and the trailing empty drain
     // cycle (totalCycles − lastUsefulCycle) is excluded from the numerator.
-    expect(st.cpi).toBeCloseTo(3.5, 5); // lastUsefulCycle 14 / 4
-    expect(st.totalCycles).toBe(15);
+    expect(st.cpi).toBeCloseTo(13 / 4, 5); // lastUsefulCycle 13 / 4
+    expect(st.totalCycles).toBe(14);
     expect(st.cpi! * st.completedInstructions).toBeLessThan(st.totalCycles);
   });
 

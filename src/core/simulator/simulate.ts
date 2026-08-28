@@ -196,86 +196,128 @@ class Sim {
   }
 
   private step(cycle: number, events: ExplanableEvent[]) {
-    const S = this.slots;
-    const wb = S.WB, ex = S.EX, of = S.OF, id = S.ID, ifc = S.IF;
+    const cur = this.slots;
+    const next: Slots = { IF: null, ID: null, OF: null, EX: null, WB: null };
     let anyStall = false;
 
-    // ---- WB commit (architectural state updated; consumer-availability held until end of step) ----
-    if (wb && wb.status === "in-flight") {
-      this.commit(wb, cycle, events);
+    // The instruction in OF resolved its operands last cycle and is ready to advance
+    // to EX. (The OF-entry gate guarantees an instruction only enters OF once its
+    // operands are available, so it is always ready here; `ofStuck` is defensive.)
+    const exInstr = cur.OF && cur.OF.status === "in-flight" && cur.OF.opReady ? cur.OF : null;
+    const ofStuck = cur.OF && cur.OF.status === "in-flight" && !cur.OF.opReady ? cur.OF : null;
+
+    // ---- WB commit FIRST: memory/register writes become visible before any
+    //      younger EX/OF instruction reads them in this same cycle ----
+    if (cur.EX && cur.EX.status === "in-flight") this.commit(cur.EX, cycle, events);
+
+    // ---- EX work happens at the cycle the instruction is displayed in EX ----
+    if (exInstr && exInstr.status === "in-flight") this.executeEx(exInstr, cycle, events);
+
+    // ---- advance EX -> WB, OF -> EX ----
+    if (cur.EX && cur.EX.status === "in-flight") { next.WB = cur.EX; cur.EX.stage = "WB"; }
+    if (exInstr && exInstr.status === "in-flight") { next.EX = exInstr; exInstr.stage = "EX"; }
+
+    // ---- branch control hazard (EX@cycle) ----
+    let branchTaken = false;
+    if (exInstr && exInstr.status === "in-flight" && exInstr.branchDetail && exInstr.branchDetail.taken) {
+      this.flushYounger(exInstr);
+      this.pc = toU16(exInstr.branchDetail.targetAddress);
+      branchTaken = true;
     }
 
-    // ---- EX execute ----
-    let exToWb: DynamicInstruction | null = null;
-    if (ex && ex.status === "in-flight") {
-      this.executeEx(ex, cycle, events);
-      exToWb = ex;
-    }
-
-    // ---- Branch control hazard ----
-    let refetch = false;
-    if (exToWb && exToWb.branchDetail && exToWb.branchDetail.taken) {
-      // Taken: discard the wrong-path instructions and refetch from the target.
-      // (A non-taken branch needs no intervention: sequential speculation already
-      // advanced pc through the fall-through path, so we simply keep going.)
-      this.flushYounger(exToWb);
-      this.pc = toU16(exToWb.branchDetail.targetAddress);
-      refetch = true;
-    }
-
-    // ---- OF operand resolution (may stall in place) ----
-    let ofStays = false;
-    if (of && of.status === "in-flight" && !of.opReady) {
-      const r = this.resolveOperands(of, cycle, events);
-      if (r === "blocked") {
-        ofStays = true;
-        anyStall = true;
-        of.blockedSet.add(cycle);
+    // ---- OF entry gating: cur.ID may enter OF only if all operands are available
+    //      at this cycle; otherwise it is held at ID (stall) with backpressure. ----
+    const idIn = cur.ID && cur.ID.status === "in-flight" && !branchTaken ? cur.ID : null;
+    let idHeld = false;
+    if (idIn && !ofStuck) {
+      if (this.canEnterOf(cycle, events)) {
+        next.OF = idIn;
+        idIn.stage = "OF";
       } else {
-        of.opReady = true;
-        of.opValues = r;
+        idHeld = true;
+        anyStall = true;
       }
+    } else if (ofStuck) {
+      next.OF = ofStuck;
+      ofStuck.stage = "OF";
+      anyStall = true;
     }
 
-    // ---- Advance latches ----
-    const next: Slots = { IF: null, ID: null, OF: null, EX: null, WB: null };
-    next.WB = exToWb;
-    if (of && of.status === "in-flight" && of.opReady) { next.EX = of; of.stage = "EX"; }
-
-    const canMoveId = !ofStays;
-    if (canMoveId) {
-      if (id && id.status === "in-flight") { next.OF = id; id.stage = "OF"; }
-      if (ifc && ifc.status === "in-flight") { next.ID = ifc; ifc.stage = "ID"; }
-      const f = refetch ? null : this.doFetch(cycle, events);
-      if (f) { next.IF = f; f.stage = "IF"; }
+    // ---- ID / IF advance + fetch with backpressure ----
+    if (branchTaken) {
+      // wrong-path instructions already flushed; fetch from the target next cycle
+      next.IF = null;
+    } else if (idHeld || ofStuck) {
+      if (idIn) { next.ID = idIn; idIn.stage = "ID"; idIn.blockedSet.add(cycle); }
+      if (cur.IF && cur.IF.status === "in-flight") {
+        next.IF = cur.IF;
+        cur.IF.stage = "IF";
+        cur.IF.blockedSet.add(cycle);
+      }
     } else {
-      next.OF = of;
-      if (of) of.stage = "OF";
-      if (id && id.status === "in-flight") {
-        next.ID = id;
-        id.stage = "ID";
-        anyStall = true;
-        id.blockedSet.add(cycle);
-        if (ifc && ifc.status === "in-flight") {
-          next.IF = ifc;
-          ifc.stage = "IF";
-          ifc.blockedSet.add(cycle);
-        }
-      } else {
-        // ID empty: IF may still advance into ID
-        if (ifc && ifc.status === "in-flight") { next.ID = ifc; ifc.stage = "ID"; }
-        const f = refetch ? null : this.doFetch(cycle, events);
-        if (f) { next.IF = f; f.stage = "IF"; }
-      }
+      if (cur.IF && cur.IF.status === "in-flight") { next.ID = cur.IF; cur.IF.stage = "ID"; }
+      const f = this.doFetch(cycle, events);
+      if (f) { next.IF = f; f.stage = "IF"; }
     }
 
+    // ---- OF operand resolution on the just-advanced (displayed) occupancy ----
     this.slots = next;
-    if (anyStall) this.stallCycles++;
-    // Finalize the WB instruction only now, so a consumer's OF in the same cycle
-    // still sees the producer as in-flight (raw hazard). Matches exam timing.
-    if (wb) {
-      this.finishWriteback(wb, cycle);
+    if (next.OF && next.OF.status === "in-flight") {
+      const r = this.resolveOperands(next.OF, cycle, events);
+      if (r === "blocked") {
+        anyStall = true;
+        next.OF.opReady = false;
+        next.OF.blockedSet.add(cycle);
+      } else {
+        next.OF.opReady = true;
+        next.OF.opValues = r;
+      }
     }
+    if (next.WB) this.finishWriteback(next.WB, cycle);
+    if (anyStall) this.stallCycles++;
+  }
+
+  // Decides whether the instruction in ID may enter OF this cycle (RAW check done
+  // BEFORE entering OF). An instruction that is not ready stays upstream in ID.
+  private canEnterOf(cycle: number, events: ExplanableEvent[]): boolean {
+    const id = this.slots.ID;
+    if (!id || id.status !== "in-flight") return true;
+    const parsed = this.parsed(id);
+    for (const ref of parsed.definition.readsRegisters(parsed)) {
+      const producer = this.pendingReg.get(ref.register);
+      if (!producer || producer === id || producer.status !== "in-flight") continue;
+      // With sameCycleWbToOfVisible=false a register written in WB only becomes
+      // available AFTER that WB cycle completes, so an OF consumer cannot read a
+      // producer that is still resolving in the pipeline.
+      //
+      // Forwarding timing: an EX result produced in cycle N becomes forwardable
+      // only in cycle N+1 (never same-cycle EX->OF, and WB->OF is also not
+      // same-cycle). A producer currently sitting in cur.OF executes EX in THIS
+      // cycle, so its result is not forwardable yet -> the consumer stalls. A
+      // producer already in cur.EX computed its result LAST cycle and is therefore
+      // forwardable now, without waiting for WB/register-file.
+      const avail =
+        this.slots.EX === producer && this.forwarding && producer.resultValue !== undefined;
+      if (!avail) {
+        events.push({
+          type: "stall",
+          cycle,
+          uid: id.uid,
+          instructionIndex: id.index,
+          blockedStage: "ID",
+          detail: {
+            reason: "RAW",
+            resource: `%r${ref.register}`,
+            producerUid: producer.uid,
+            producerStage: "EX",
+            neededAt: "OF",
+            availableAt: this.forwarding ? "EX (forwarding, next cycle)" : "WB",
+          },
+        } as StallEvent);
+        return false;
+      }
+    }
+    return true;
   }
 
   private doFetch(cycle: number, events: ExplanableEvent[]): DynamicInstruction | null {
@@ -494,9 +536,11 @@ class Sim {
       this.regs[wr.register] = toU16(d.resultValue);
       this.writes.push({ uid: d.uid, instructionIndex: d.index, register: wr.register, value: toU16(d.resultValue), kind: "write" });
       events.push({ type: "writeback", cycle, uid: d.uid, instructionIndex: d.index });
-      // sameCycleWbToOfVisible: the register is now in the architectural register
-      // file, so it becomes visible to an OF-stage consumer later in THIS same cycle.
-      this.removeFromPending(d);
+      // End-of-WB visibility (sameCycleWbToOfVisible=false): the register is written
+      // to the architectural file during this WB cycle, but its pending entry is only
+      // released AFTER the WB cycle completes, so a same-cycle OF consumer is still
+      // blocked on the RAW hazard (see finishWriteback). An OF consumer may read the
+      // value only starting the cycle after the producer's WB cycle.
     }
     if (d.resultFlags) {
       for (const f of ["Z", "N", "C"] as FlagName[]) {
@@ -532,9 +576,11 @@ class Sim {
   }
 
   // Called at the end of the WB cycle (after OF resolution) to finalize counts.
-  // The producer's pending entry is already released during its WB commit so that
-  // a same-cycle OF consumer can read it (sameCycleWbToOfVisible).
+  // The producer's pending register entry is released only here, i.e. only AFTER
+  // its WB cycle has completed, so an OF consumer in the same WB cycle remains
+  // blocked on the RAW hazard (sameCycleWbToOfVisible=false).
   private finishWriteback(d: DynamicInstruction, cycle: number) {
+    this.removeFromPending(d);
     if (d.mnemonic === "hlt") {
       d.status = "halted";
     } else {

@@ -54,7 +54,7 @@ describe("App", () => {
     expect(screen.getByTestId("explanation-panel").textContent).toContain("Stall");
   });
 
-  it("Forwarding entfernt den Stall (Statistik und Pipeline)", () => {
+  it("Forwarding reduziert den Stall (Statistik und Pipeline)", () => {
     const off = rawResult(false);
     const offStats = off.statistics;
     expect(offStats.stallCycles).toBeGreaterThan(0);
@@ -63,8 +63,10 @@ describe("App", () => {
     expect(screen.getByTestId("statistics-view").textContent).toContain("Stall-Takte");
     fireEvent.click(screen.getByTestId("forwarding-toggle"));
     const on = rawResult(true);
-    // nach dem Umschalten: keine Stalls mehr und der Wert wird z. B. weitergeleitet
-    expect(on.statistics.stallCycles).toBe(0);
+    // Forwarding entfernt die WB-Warte-Stalls; ein struktureller Same-Cycle-EX-Stall
+    // (kein Same-Cycle-EX->OF) bleibt bestehen
+    expect(on.statistics.stallCycles).toBeLessThan(offStats.stallCycles);
+    expect(on.statistics.forwardingEvents).toBeGreaterThan(0);
   });
 
   it("zeigt Registerwerte passend zum gewählten Takt (diagonal)", () => {
@@ -90,9 +92,22 @@ describe("App", () => {
     expect(fwdCycle).toBeGreaterThan(0);
     render(<App />);
     selectExample("raw-forwarding");
-    fireEvent.click(screen.getByTestId("forwarding-toggle"));
+    // die Auswahl des Beispiels setzt die Konfig des Beispiels an (Forwarding an)
+    // und der Toggle spiegelt den tatsächlichen Konfig-Wert wider
+    expect((screen.getByTestId("forwarding-toggle") as HTMLInputElement).checked).toBe(true);
     setCycle(fwdCycle);
     expect(screen.queryAllByTestId("reg-forwarded").length).toBeGreaterThan(0);
+  });
+
+  it("Auswahl des Forwarding-Beispiels aktiviert den Forwarding-Toggle automatisch", () => {
+    render(<App />);
+    // Standardbeispiel hat Forwarding aus
+    expect((screen.getByTestId("forwarding-toggle") as HTMLInputElement).checked).toBe(false);
+    selectExample("raw-forwarding");
+    expect((screen.getByTestId("forwarding-toggle") as HTMLInputElement).checked).toBe(true);
+    // RAW-Beispiel (ohne Forwarding) setzt den Toggle wieder zurück
+    selectExample("raw");
+    expect((screen.getByTestId("forwarding-toggle") as HTMLInputElement).checked).toBe(false);
   });
 
   it("zeigt einen deutschen Fehlertext bei unbekannter Instruktion (Editor-Ebene)", () => {
