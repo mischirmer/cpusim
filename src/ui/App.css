@@ -117,6 +117,7 @@ h3 { font-size: 13px; margin: 0 0 6px; }
 .pipeline .corner, .pipeline th.instr { text-align: left; }
 .pipeline th.instr { font-family: monospace; min-width: 120px; position: sticky; left: 0; background: var(--panel); }
 .pipeline .addr { color: var(--muted); font-style: italic; font-size: 10px; }
+.pipeline .line { color: var(--muted); font-size: 10px; }
 .pipeline .col-cycle { background: #e9effc; }
 .pipeline td.col-cycle.active, .pipeline th.col-cycle.active { background: #cfe0ff; }
 .pipeline td.stall { color: var(--stall); font-weight: 700; background: #fdecec; }

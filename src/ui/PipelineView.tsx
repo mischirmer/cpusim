@@ -74,7 +74,8 @@ export function PipelineView({ result, cycle, maxCycle }: Props) {
             {rows.map(({ dyn, cells }) => (
               <tr key={dyn.uid} data-testid="pipeline-row">
                 <th className="instr" scope="row">
-                  {dyn.mnemonic} <span className="addr">@{dyn.address}</span>
+                  {dyn.mnemonic} <span className="addr">@{dyn.address}</span>{" "}
+                  <span className="line">Z{dyn.sourceLine}</span>
                 </th>
                 {cells.slice(start, end).map((status, i) => {
                   const c = start + i;
