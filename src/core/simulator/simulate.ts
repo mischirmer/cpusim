@@ -102,6 +102,7 @@ class Sim {
   private flushEvents = 0;
   private forwardingEvents = 0;
   private lastUsefulCycle = 0;
+  private pendingBranchFlush: DynamicInstruction | null = null;
 
   private reads: RegReadWrite[] = [];
   private writes: RegReadWrite[] = [];
@@ -196,6 +197,11 @@ class Sim {
   }
 
   private step(cycle: number, events: ExplanableEvent[]) {
+    if (this.pendingBranchFlush) {
+      this.flushYounger(this.pendingBranchFlush, cycle, events);
+      this.pendingBranchFlush = null;
+    }
+
     const cur = this.slots;
     const next: Slots = { IF: null, ID: null, OF: null, EX: null, WB: null };
     let anyStall = false;
@@ -220,17 +226,20 @@ class Sim {
     // ---- branch control hazard (EX@cycle) ----
     let branchTaken = false;
     if (exInstr && exInstr.status === "in-flight" && exInstr.branchDetail && exInstr.branchDetail.taken) {
-      this.flushYounger(exInstr);
+      this.pendingBranchFlush = exInstr;
       this.pc = toU16(exInstr.branchDetail.targetAddress);
       branchTaken = true;
     }
 
     // ---- OF entry gating: cur.ID may enter OF only if all operands are available
-    //      at this cycle; otherwise it is held at ID (stall) with backpressure. ----
-    const idIn = cur.ID && cur.ID.status === "in-flight" && !branchTaken ? cur.ID : null;
+    //      at this cycle; otherwise it is held at ID (stall) with backpressure.
+    //      A wrong-path instruction still completes this cycle's normal stage
+    //      transition (its status is already "flushed", so it drops out of the
+    //      pipeline starting next cycle instead of disappearing mid-stage). ----
+    const idIn = cur.ID && cur.ID.status === "in-flight" ? cur.ID : null;
     let idHeld = false;
     if (idIn && !ofStuck) {
-      if (this.canEnterOf(cycle, events)) {
+      if (idIn.status === "flushed" || this.canEnterOf(cycle, events)) {
         next.OF = idIn;
         idIn.stage = "OF";
       } else {
@@ -245,7 +254,9 @@ class Sim {
 
     // ---- ID / IF advance + fetch with backpressure ----
     if (branchTaken) {
-      // wrong-path instructions already flushed; fetch from the target next cycle
+      // the wrong-path instruction in IF still advances to ID this cycle (see
+      // above); no new fetch happens until next cycle, from the branch target
+      if (cur.IF && cur.IF.status === "in-flight") { next.ID = cur.IF; cur.IF.stage = "ID"; }
       next.IF = null;
     } else if (idHeld || ofStuck) {
       if (idIn) { next.ID = idIn; idIn.stage = "ID"; idIn.blockedSet.add(cycle); }
@@ -344,12 +355,15 @@ class Sim {
     return d;
   }
 
-  private flushYounger(branch: DynamicInstruction) {
+  // Marks wrong-path instructions as flushed at the start of the cycle after the
+  // branch resolved in EX, so the branch's EX-cycle snapshot still shows the
+  // younger instructions in the stages they occupied before the redirect.
+  private flushYounger(branch: DynamicInstruction, cycle: number, events: ExplanableEvent[]) {
     for (const d of this.dyns) {
       if (d.status === "in-flight" && d.fetchSeq > branch.fetchSeq && d !== branch) {
         d.status = "flushed";
         this.flushedCount++;
-        for (const st of STAGES) if (this.slots[st] === d) this.slots[st] = null;
+        events.push({ type: "flush", cycle, uid: d.uid, instructionIndex: d.index });
         for (const [k, v] of this.pendingReg) if (v === d) this.pendingReg.delete(k);
       }
     }

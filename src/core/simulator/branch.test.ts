@@ -107,6 +107,26 @@ hlt
     expect(result.finalState.registers[3]).toBe(0);
   });
 
+  it("shows the wrong-path instruction in its stage during branch EX and flushes it next cycle", () => {
+    const src = `ldi %r1 $1
+sub %r2 %r1 %r1
+bz $0
+xor %r3 %r3 %r3
+ldi %r4 $7
+hlt
+`;
+    const { result, matrix } = statusMatrix(src);
+    const branch = result.dynamicInstructions.find((d) => d.mnemonic === "bz")!;
+    const branchRow = matrix[result.dynamicInstructions.indexOf(branch)];
+    const branchExCycle = branchRow.findIndex((status) => status === "EX");
+    const flushed = result.dynamicInstructions.find((d) => d.status === "flushed" && d.fetchSeq > branch.fetchSeq)!;
+    const flushedRow = matrix[result.dynamicInstructions.indexOf(flushed)];
+
+    expect(branchExCycle).toBeGreaterThan(0);
+    expect(flushedRow[branchExCycle]).not.toBe("flush");
+    expect(flushedRow[branchExCycle + 1]).toBe("flush");
+  });
+
   it("a non-taken branch causes no flush", () => {
     // ldi produces no new flag; initial Z=0, so bz is NOT taken
     const src = `ldi %r1 $1
