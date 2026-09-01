@@ -11,6 +11,15 @@ export interface Example {
   initialState?: InitialCpuState;
 }
 
+function memoryWords(entries: Array<[number, number]>): Map<number, number> {
+  const memory = new Map<number, number>();
+  for (const [address, value] of entries) {
+    memory.set(address & 0xffff, (value >> 8) & 0xff);
+    memory.set((address + 1) & 0xffff, value & 0xff);
+  }
+  return memory;
+}
+
 export const EXAMPLES: Example[] = [
   {
     id: "diagonal",
@@ -86,11 +95,9 @@ hlt
     description:
       "Multipliziert die Big-Endian-Worte an 0x2000 und 0x2002 und speichert das Ergebnis an 0x2004.",
     initialState: {
-      memory: new Map([
-        [0x2000, 0x00],
-        [0x2001, 0x02],
-        [0x2002, 0x00],
-        [0x2003, 0x03],
+      memory: memoryWords([
+        [0x2000, 0x0002],
+        [0x2002, 0x0003],
       ]),
     },
     source: `ldi %r0 $0x200

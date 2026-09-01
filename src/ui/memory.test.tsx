@@ -108,6 +108,38 @@ describe("MemoryEditor (UI)", () => {
     expect(last.cpuAfter.registers[1]).toBe(loaded);
   });
 
+  it("zeigt Beispiel-Initialspeicher als editierbare Wort-Zeilen", () => {
+    render(<App />);
+    fireEvent.change(screen.getByTestId("example-select"), { target: { value: "multiply-2x3" } });
+    const rows = screen.getAllByTestId("memory-row");
+
+    expect(rows).toHaveLength(2);
+    expect((within(rows[0]).getByLabelText("Adresse") as HTMLInputElement).value).toBe("0x2000");
+    expect((within(rows[0]).getByLabelText("Wert") as HTMLInputElement).value).toBe("0x0002");
+    expect((within(rows[1]).getByLabelText("Adresse") as HTMLInputElement).value).toBe("0x2002");
+    expect((within(rows[1]).getByLabelText("Wert") as HTMLInputElement).value).toBe("0x0003");
+
+    fireEvent.change(within(rows[1]).getByLabelText("Wert"), { target: { value: "4" } });
+    expect((within(screen.getAllByTestId("memory-row")[1]).getByLabelText("Wert") as HTMLInputElement).value).toBe("4");
+  });
+
+  it.each([
+    ["10", 0x00, 0x0a, 0x000a],
+    ["0x10", 0x00, 0x10, 0x0010],
+  ])("unterscheidet dezimale und hexadezimale Werte: %s", (word, high, low, loaded) => {
+    const onChange = vi.fn();
+    render(<MemoryEditor memory={new Map()} onChange={onChange} />);
+    addRow("0x2000", word);
+    const memory = onChange.mock.calls[onChange.mock.calls.length - 1]![0] as Map<number, number>;
+
+    expect(memory.get(0x2000)).toBe(high);
+    expect(memory.get(0x2001)).toBe(low);
+
+    const r = run("ldi %r0, $0x2000\nldw %r1, %r0\nhlt\n", memory);
+    const last = r.snapshots[r.snapshots.length - 1];
+    expect(last.cpuAfter.registers[1]).toBe(loaded);
+  });
+
   it("meldet eine ungültige Adresse (außerhalb 16 Bit) auf Deutsch", () => {
     render(<App />);
     addRow("0x10000", "0xAB");

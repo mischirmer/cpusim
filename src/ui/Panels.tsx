@@ -262,11 +262,13 @@ export function ExamplePicker({ value, onChange }: { value: string; onChange: (i
   );
 }
 
-function parseHex(text: string): number | null {
+function parseNumberInput(text: string): number | null {
   const t = text.trim().toLowerCase();
   if (t === "") return null;
-  const n = /^0x/.test(t) ? Number.parseInt(t.slice(2), 16) : Number.parseInt(t, 16);
-  if (!t.match(/^0x[0-9a-f]+$/) && !t.match(/^[0-9a-f]+$/)) return null;
+  const isHex = t.startsWith("0x");
+  if (isHex && !/^0x[0-9a-f]+$/.test(t)) return null;
+  if (!isHex && !/^\d+$/.test(t)) return null;
+  const n = Number.parseInt(isHex ? t.slice(2) : t, isHex ? 16 : 10);
   return Number.isNaN(n) ? null : n;
 }
 
@@ -277,11 +279,24 @@ interface MemoryRow {
 }
 
 function seedRows(memory: Map<number, number>): MemoryRow[] {
-  return [...memory.entries()].map(([a, v], i) => ({
-    id: i,
-    addr: `0x${a.toString(16).toUpperCase().padStart(4, "0")}`,
-    val: `0x${v.toString(16).toUpperCase().padStart(2, "0")}`,
-  }));
+  const rows: MemoryRow[] = [];
+  const consumed = new Set<number>();
+  const addresses = [...memory.keys()].sort((a, b) => a - b);
+  for (const a of addresses) {
+    const addr = a & 0xffff;
+    if (consumed.has(addr)) continue;
+    const nextAddr = (addr + 1) & 0xffff;
+    const high = memory.get(addr) ?? 0;
+    const low = memory.get(nextAddr) ?? 0;
+    rows.push({
+      id: rows.length,
+      addr: `0x${addr.toString(16).toUpperCase().padStart(4, "0")}`,
+      val: `0x${(((high & 0xff) << 8) | (low & 0xff)).toString(16).toUpperCase().padStart(4, "0")}`,
+    });
+    consumed.add(addr);
+    if (memory.has(nextAddr)) consumed.add(nextAddr);
+  }
+  return rows;
 }
 
 export function MemoryEditor({
@@ -293,15 +308,25 @@ export function MemoryEditor({
 }) {
   const [rows, setRows] = useState<MemoryRow[]>(() => seedRows(memory));
   const nextId = useRef(rows.length);
-  const lastPushed = useRef<Map<number, number>>(new Map());
+  const lastPushed = useRef<Map<number, number>>(new Map(memory));
+  const syncingFromProps = useRef(false);
+
+  useEffect(() => {
+    if (mapsEqual(memory, lastPushed.current)) return;
+    const seeded = seedRows(memory);
+    syncingFromProps.current = true;
+    setRows(seeded);
+    nextId.current = seeded.length;
+    lastPushed.current = new Map(memory);
+  }, [memory]);
 
   const rowErrors = useMemo(() => {
     const seen = new Map<number, number>();
     const errs: Record<number, { addr?: string; val?: string }> = {};
     for (const r of rows) {
       if (r.addr.trim() === "" && r.val.trim() === "") continue;
-      const a = parseHex(r.addr);
-      const v = parseHex(r.val);
+      const a = parseNumberInput(r.addr);
+      const v = parseNumberInput(r.val);
       if (a === null) errs[r.id] = { ...errs[r.id], addr: "Ungültige Adresse." };
       else if (a > 0xffff) errs[r.id] = { ...errs[r.id], addr: "Adresse außerhalb des 16-Bit-Bereichs (0x0000–0xFFFF)." };
       if (v === null) errs[r.id] = { ...errs[r.id], val: "Ungültiger Wert." };
@@ -320,10 +345,14 @@ export function MemoryEditor({
   }, [rows]);
 
   useEffect(() => {
+    if (syncingFromProps.current) {
+      syncingFromProps.current = false;
+      return;
+    }
     const m = new Map<number, number>();
     for (const r of rows) {
-      const a = parseHex(r.addr);
-      const v = parseHex(r.val);
+      const a = parseNumberInput(r.addr);
+      const v = parseNumberInput(r.val);
       if (a !== null && a <= 0xffff && v !== null && v <= 0xffff) {
         m.set(a, (v >> 8) & 0xff);
         m.set((a + 1) & 0xffff, v & 0xff);
