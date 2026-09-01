@@ -80,4 +80,44 @@ ldw %r3, %r1
 hlt
 `,
   },
+  {
+    id: "multiply-2x3",
+    title: "Multiplikation 2 × 3",
+    description:
+      "Multipliziert die Big-Endian-Worte an 0x2000 und 0x2002 und speichert das Ergebnis an 0x2004.",
+    initialState: {
+      memory: new Map([
+        [0x2000, 0x00],
+        [0x2001, 0x02],
+        [0x2002, 0x00],
+        [0x2003, 0x03],
+      ]),
+    },
+    source: `ldi %r0 $0x200
+shl %r0 %r0
+shl %r0 %r0
+shl %r0 %r0
+shl %r0 %r0 ; %r0 = 0x2000
+ldi %r1 $1 ; %r1 = 1
+ldi %r2 $2 ; %r2 = 2
+ldw %r3 %r0 ; %r3 = [0x2000] (=a)
+add %r0 %r0 %r2
+ldw %r4 %r0 ; %r4 = [0x2002] (=b)
+ldi %r5 $0 ; %r5 (c) = 0
+and %r6 %r4 %r1 ; test lowest bit
+bz $3 ; skip addition and test
+add %r5 %r5 %r3 ; c = c + a
+bc $6 ; catch overflow
+shr %r4 %r4 ; b = b >> 1
+bz $6 ; b is zero, done
+shl %r3 %r3 ; a = a << 1
+bc $2 ; catch overflow
+b $-8 ; jump back to loop
+ldi %r5 $0
+not %r5 %r5 ; c = 0xffff on overflow
+add %r0 %r0 %r2
+stw %r0 %r5 ; [0x2004] = c
+hlt
+`,
+  },
 ];
