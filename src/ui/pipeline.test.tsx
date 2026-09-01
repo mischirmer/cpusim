@@ -6,7 +6,7 @@ import { PipelineView } from "./PipelineView";
 
 function runawayResult() {
   const state: InitialCpuState = { flags: { Z: false, N: false, C: false }, registers: Array(16).fill(0) };
-  return simulate(parseAssembly("bnz $-1\n"), undefined, state);
+  return simulate(parseAssembly("bnz $0\n"), undefined, state);
 }
 
 describe("PipelineView", () => {

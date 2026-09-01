@@ -41,29 +41,25 @@ describe("branch — condition evaluation", () => {
   });
 });
 
-describe("branch — target computation (advanced-pc base)", () => {
-  it("b $0 continues with the next sequential instruction", () => {
-    const src = `ldi %r1 $1
-b $0
-ldi %r2 $2
-hlt
-`;
-    const { result } = statusMatrix(src);
-    // branch does not flush the following instruction (target = next)
-    const b = result.dynamicInstructions.find((d) => d.mnemonic === "b")!;
+describe("branch — target computation (instruction-address base)", () => {
+  it("b $0 targets the branch instruction itself", () => {
+    const src = `b $0`;
+    const program = parseAssembly(src);
+    const result = simulate(program, { ...DEFAULT_CONFIG, maxCycles: 5 });
+    const b = result.dynamicInstructions[0];
     expect(b.branchDetail!.taken).toBe(true);
-    // advanced-pc base: b $0 targets the next sequential instruction (address 4)
-    expect(b.branchDetail!.targetAddress).toBe(4);
-    // sequential continuation semantics hold: the following instruction runs
-    expect(result.finalState.registers[2]).toBe(2);
+    expect(b.branchDetail!.targetAddress).toBe(0);
+    expect(result.termination.type).toBe("max-cycles");
   });
 
-  it("computes forward target A + 2 + 2*i", () => {
-    const { result } = statusMatrix(`b $3
+  it("computes forward target A + 2*i", () => {
+    const { result } = statusMatrix(`nop
+b $3
 hlt
 `);
-    const b = result.dynamicInstructions[0];
-    expect(b.branchDetail!.targetAddress).toBe(0 + 2 + 2 * 3);
+    const b = result.dynamicInstructions.find((d) => d.mnemonic === "b")!;
+    expect(b.address).toBe(2);
+    expect(b.branchDetail!.targetAddress).toBe(2 + 2 * 3);
   });
 
   it("computes backward target with negative offset", () => {
@@ -75,7 +71,7 @@ hlt
 `);
     const bnz = result.dynamicInstructions.find((d) => d.mnemonic === "bnz")!;
     expect(bnz.address).toBe(6);
-    expect(bnz.branchDetail!.targetAddress).toBe(4);
+    expect(bnz.branchDetail!.targetAddress).toBe(2);
   });
 });
 
@@ -83,7 +79,7 @@ describe("branch — taken branch flushes wrong-path", () => {
   it("flushes younger wrong-path instructions and resumes at target", () => {
     const src = `ldi %r1 $1
 sub %r2 %r1 %r1
-bz $0
+bz $3
 xor %r3 %r3 %r3
 ldi %r4 $7
 hlt
@@ -110,7 +106,7 @@ hlt
   it("shows the wrong-path instruction in its stage during branch EX and flushes it next cycle", () => {
     const src = `ldi %r1 $1
 sub %r2 %r1 %r1
-bz $0
+bz $3
 xor %r3 %r3 %r3
 ldi %r4 $7
 hlt
@@ -142,4 +138,58 @@ hlt
     // sequential execution continues into the following instruction
     expect(result.finalState.registers[3]).toBe(9);
   });
+
+  it("runs the original multiplication program branch offsets without adjustment", () => {
+    expect(runMultiplyProgram(2, 3).product).toBe(6);
+    expect(runMultiplyProgram(7, 9).product).toBe(63);
+  });
 });
+
+function runMultiplyProgram(a: number, b: number): { product: number; result: ReturnType<typeof simulate> } {
+  const src = `ldi %r0 $0x200
+shl %r0 %r0
+shl %r0 %r0
+shl %r0 %r0
+shl %r0 %r0
+ldi %r1 $1
+ldi %r2 $2
+ldw %r3 %r0
+add %r0 %r0 %r2
+ldw %r4 %r0
+ldi %r5 $0
+and %r6 %r4 %r1
+bz $3
+add %r5 %r5 %r3
+bc $6
+shr %r4 %r4
+bz $6
+shl %r3 %r3
+bc $2
+b $-8
+ldi %r5 $0
+not %r5 %r5
+add %r0 %r0 %r2
+stw %r0 %r5
+hlt
+`;
+  const program = parseAssembly(src);
+  const initialMemory = new Map([
+    [0x2000, (a >> 8) & 0xff],
+    [0x2001, a & 0xff],
+    [0x2002, (b >> 8) & 0xff],
+    [0x2003, b & 0xff],
+  ]);
+  const result = simulate(program, DEFAULT_CONFIG, { memory: initialMemory });
+  const memory = new Map(result.snapshots[result.snapshots.length - 1]!.memory);
+  const product = ((memory.get(0x2004) ?? 0) << 8) | (memory.get(0x2005) ?? 0);
+  const overflowHandler = result.dynamicInstructions.filter((d) => d.address === 0x28 || d.address === 0x2a);
+
+  expect(result.termination.type).toBe("hlt");
+  expect(memory.get(0x2000)).toBe((a >> 8) & 0xff);
+  expect(memory.get(0x2001)).toBe(a & 0xff);
+  expect(memory.get(0x2002)).toBe((b >> 8) & 0xff);
+  expect(memory.get(0x2003)).toBe(b & 0xff);
+  expect(overflowHandler.every((d) => d.status === "flushed")).toBe(true);
+
+  return { product, result };
+}

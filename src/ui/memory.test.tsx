@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { parseAssembly, simulate, DEFAULT_CONFIG } from "../core/index";
 import { App } from "./App";
 import { EXAMPLES } from "./examples";
 import { memoryAt, memoryExplanation } from "./selectors";
+import { MemoryEditor } from "./Panels";
 
 function run(source: string, memory: Map<number, number>) {
   return simulate(parseAssembly(source), DEFAULT_CONFIG, { memory });
@@ -89,23 +90,41 @@ describe("MemoryEditor (UI)", () => {
     expect(screen.getByTestId("memory-view").textContent).toContain("0xAB");
   });
 
+  it.each([
+    ["0x0002", 0x00, 0x02, 0x0002],
+    ["0x1234", 0x12, 0x34, 0x1234],
+    ["0xABCD", 0xab, 0xcd, 0xabcd],
+  ])("schreibt Wort %s im Initialspeicher Big-Endian", (word, high, low, loaded) => {
+    const onChange = vi.fn();
+    render(<MemoryEditor memory={new Map()} onChange={onChange} />);
+    addRow("0x2000", word);
+    const memory = onChange.mock.calls[onChange.mock.calls.length - 1]![0] as Map<number, number>;
+
+    expect(memory.get(0x2000)).toBe(high);
+    expect(memory.get(0x2001)).toBe(low);
+
+    const r = run("ldi %r0, $0x2000\nldw %r1, %r0\nhlt\n", memory);
+    const last = r.snapshots[r.snapshots.length - 1];
+    expect(last.cpuAfter.registers[1]).toBe(loaded);
+  });
+
   it("meldet eine ungültige Adresse (außerhalb 16 Bit) auf Deutsch", () => {
     render(<App />);
     addRow("0x10000", "0xAB");
     expect(screen.getByText("Adresse außerhalb des 16-Bit-Bereichs (0x0000–0xFFFF).")).toBeTruthy();
   });
 
-  it("meldet einen ungültigen Byte-Wert auf Deutsch", () => {
+  it("meldet einen ungültigen Wort-Wert auf Deutsch", () => {
     render(<App />);
-    addRow("0x1000", "0x1FF");
-    expect(screen.getByText("Der Wert muss ein Byte sein (0x00–0xFF).")).toBeTruthy();
+    addRow("0x1000", "0x10000");
+    expect(screen.getByText("Der Wert muss ein Wort sein (0x0000–0xFFFF).")).toBeTruthy();
   });
 
-  it("meldet eine doppelte Adresse auf Deutsch", () => {
+  it("meldet überlappende Wort-Adressen auf Deutsch", () => {
     render(<App />);
     addRow("0x1000", "0xAA");
-    addRow("0x1000", "0xBB");
-    expect(screen.getByText(/Doppelte Adresse 0x1000\./)).toBeTruthy();
+    addRow("0x1001", "0xBB");
+    expect(screen.getByText(/Überlappender Speicherbereich bei 0x1001\./)).toBeTruthy();
   });
 
   it("Entfernen löscht eine Zeile, Alle löschen leert die Liste", () => {

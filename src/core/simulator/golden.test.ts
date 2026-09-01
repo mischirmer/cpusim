@@ -4,7 +4,7 @@ import { statusMatrix, finalRegisters } from "../testutil";
 // The uploaded exam pattern (implementation.md §38.1) applied to a concrete program:
 //   I1 ldi %r1 $5
 //   I2 add %r2 %r1 %r4   (RAW on %r1 -> two-cycle stall, end-of-WB visibility)
-//   I3 b  $2              (taken branch)
+//   I3 b  $3              (taken branch)
 //   I4 xor ...             (wrong path, flushed)
 //   I5 nop ...             (wrong path, flushed)
 //   I6 ldi %r5 $7          (branch target, executed)
@@ -16,7 +16,7 @@ import { statusMatrix, finalRegisters } from "../testutil";
 //   ldi#1). The target ldi#2 is then fetched and executed.
 const EXAM = `ldi %r1 $5
 add %r2 %r1 %r4
-b $2
+b $3
 xor %r3 %r3 %r3
 nop
 ldi %r5 $7

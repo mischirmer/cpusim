@@ -305,10 +305,15 @@ export function MemoryEditor({
       if (a === null) errs[r.id] = { ...errs[r.id], addr: "Ungültige Adresse." };
       else if (a > 0xffff) errs[r.id] = { ...errs[r.id], addr: "Adresse außerhalb des 16-Bit-Bereichs (0x0000–0xFFFF)." };
       if (v === null) errs[r.id] = { ...errs[r.id], val: "Ungültiger Wert." };
-      else if (v > 0xff) errs[r.id] = { ...errs[r.id], val: "Der Wert muss ein Byte sein (0x00–0xFF)." };
-      if (a !== null && a <= 0xffff && v !== null && v <= 0xff) {
-        if (seen.has(a)) errs[r.id] = { ...errs[r.id], addr: `Doppelte Adresse ${memHex(a)}.` };
-        else seen.set(a, r.id);
+      else if (v > 0xffff) errs[r.id] = { ...errs[r.id], val: "Der Wert muss ein Wort sein (0x0000–0xFFFF)." };
+      if (a !== null && a <= 0xffff && v !== null && v <= 0xffff) {
+        for (const byteAddr of [a, (a + 1) & 0xffff]) {
+          if (seen.has(byteAddr)) {
+            errs[r.id] = { ...errs[r.id], addr: `Überlappender Speicherbereich bei ${memHex(byteAddr)}.` };
+            break;
+          }
+          seen.set(byteAddr, r.id);
+        }
       }
     }
     return errs;
@@ -319,7 +324,10 @@ export function MemoryEditor({
     for (const r of rows) {
       const a = parseHex(r.addr);
       const v = parseHex(r.val);
-      if (a !== null && a <= 0xffff && v !== null && v <= 0xff) m.set(a, v);
+      if (a !== null && a <= 0xffff && v !== null && v <= 0xffff) {
+        m.set(a, (v >> 8) & 0xff);
+        m.set((a + 1) & 0xffff, v & 0xff);
+      }
     }
     if (mapsEqual(m, lastPushed.current)) return;
     lastPushed.current = m;
@@ -392,7 +400,7 @@ export function MemoryEditor({
           Alle löschen
         </button>
       </div>
-      <p className="mem-hint">Byte-adressiert, Big-Endian (MSB zuerst). ldw liest zwei Bytes: 0xABCD.</p>
+      <p className="mem-hint">Byte-adressiert, Big-Endian (MSB zuerst). Ein Wort 0xABCD wird als 0xAB, 0xCD abgelegt.</p>
     </div>
   );
 }

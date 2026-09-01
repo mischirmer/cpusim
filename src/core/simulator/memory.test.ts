@@ -43,10 +43,22 @@ describe("MemoryState — big-endian words (MSB first)", () => {
     expect(m.readWord(0x2000)).toBe(0xabcd);
   });
 
+  it("reads 0x1234 from bytes 0x12 0x34 at 0x1000", () => {
+    const m = new MemoryState(new Map([[0x1000, 0x12], [0x1001, 0x34]]));
+    expect(m.readWord(0x1000)).toBe(0x1234);
+  });
+
   it("wraps word value to uint16", () => {
     const m = new MemoryState();
     m.writeWord(0x0000, 0x1abcd);
     expect(m.readWord(0x0000)).toBe(0xabcd);
+  });
+
+  it("stores 0xabcd at 0x1000 as 0xab then 0xcd", () => {
+    const m = new MemoryState();
+    m.writeWord(0x1000, 0xabcd);
+    expect(m.readByte(0x1000)).toBe(0xab);
+    expect(m.readByte(0x1001)).toBe(0xcd);
   });
 
   it("exposes entries", () => {

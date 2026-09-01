@@ -54,7 +54,7 @@ describe("flags — always-available after EX (no forwarding checkbox needed)", 
     // sub reads pre-loaded registers (no RAW); produces Z=true; bz must take
     // the branch even with forwarding OFF — only the flag dependency matters.
     const src = `sub %r2 %r1 %r1
-bz $0
+bz $2
 ldi %r3 $9
 hlt
 `;
@@ -68,7 +68,7 @@ hlt
 
   it("forwarding checkbox does not change flag-dependent behavior", () => {
     const src = `sub %r2 %r1 %r1
-bz $0
+bz $1
 hlt
 `;
     const p = parseAssembly(src);

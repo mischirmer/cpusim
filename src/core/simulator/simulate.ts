@@ -469,7 +469,7 @@ class Sim {
         flag: flagName && flagVal !== undefined ? { flag: flagName, value: flagVal } : undefined,
         condition: d.mnemonic.toUpperCase(),
         taken,
-        targetAddress: toU16(d.address + 2 + 2 * toI16(imm)),
+        targetAddress: toU16(d.address + 2 * toI16(imm)),
       };
       events.push({ type: "execute", cycle, uid: d.uid, instructionIndex: d.index });
       return;

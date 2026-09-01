@@ -17,7 +17,7 @@ export interface ProcessorConfig {
   };
   memory: { addressBits: 16; endianness: "big" };
   subtractionCarryConvention: "borrow-means-C1";
-  branchBase: "advanced-pc";
+  branchBase: "instruction-address";
   maxCycles: number;
 }
 
@@ -37,6 +37,6 @@ export const DEFAULT_CONFIG: ProcessorConfig = {
   branches: { speculativeSequentialFetch: true, prediction: "none" },
   memory: { addressBits: 16, endianness: "big" },
   subtractionCarryConvention: "borrow-means-C1",
-  branchBase: "advanced-pc",
+  branchBase: "instruction-address",
   maxCycles: 5000,
 };
