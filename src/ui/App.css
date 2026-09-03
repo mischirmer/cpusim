@@ -38,15 +38,41 @@ body {
 }
 .app-header h1 { font-size: 20px; margin: 0; }
 .example-desc { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: 60ch; }
+.header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.help-toggle { cursor: pointer; border: 1px solid var(--border); background: var(--panel); border-radius: 6px; padding: 6px 10px; }
 
 .editor-pane { display: flex; flex-direction: column; gap: 12px; }
 
-.panel, .assembly-editor, .pipeline, .cycle-controls {
+.panel, .assembly-editor, .pipeline, .cycle-controls, .help-panel {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
 }
+
+.help-panel { grid-column: 1 / -1; overflow-x: auto; }
+.help-intro {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.help-intro p { color: var(--muted); font-size: 13px; margin: 0; max-width: 78ch; }
+.help-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.help-table th, .help-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+.help-table th { background: #e9effc; }
+.help-op, .help-syntax { font-family: monospace; white-space: nowrap; }
+.help-op { font-weight: 700; }
 
 h2 { font-size: 14px; margin: 0 0 8px; }
 h3 { font-size: 13px; margin: 0 0 6px; }

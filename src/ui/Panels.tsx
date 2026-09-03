@@ -262,6 +262,72 @@ export function ExamplePicker({ value, onChange }: { value: string; onChange: (i
   );
 }
 
+const INSTRUCTION_HELP = [
+  { op: "nop", syntax: "nop", flags: "-", text: "Keine Operation; durchläuft die Pipeline ohne Register, Flags oder Speicher zu ändern." },
+  { op: "hlt", syntax: "hlt", flags: "-", text: "Beendet das Programm, sobald die Instruktion wirksam wird; jüngere spekulative Instruktionen werden verworfen." },
+  { op: "ldi", syntax: "ldi %rd $imm", flags: "-", text: "Lädt den 16-Bit-Immediate-Wert in das Zielregister." },
+  { op: "mov", syntax: "mov %rd %rs", flags: "-", text: "Kopiert den Wert aus einem Register in ein anderes Register." },
+  { op: "add", syntax: "add %rd %ra %rb", flags: "Z N C", text: "Addiert zwei Register. C ist der unsigned Carry aus Bit 15." },
+  { op: "addc", syntax: "addc %rd %ra %rb", flags: "Z N C", text: "Addiert zwei Register plus aktuelles Carry-Flag." },
+  { op: "sub", syntax: "sub %rd %ra %rb", flags: "Z N C", text: "Subtrahiert %rb von %ra. C=1 bedeutet Borrow." },
+  { op: "subc", syntax: "subc %rd %ra %rb", flags: "Z N C", text: "Subtrahiert %rb und das aktuelle Carry-Flag von %ra." },
+  { op: "and", syntax: "and %rd %ra %rb", flags: "Z N C", text: "Bitweises UND. C wird auf 0 gesetzt." },
+  { op: "or", syntax: "or %rd %ra %rb", flags: "Z N C", text: "Bitweises ODER. C wird auf 0 gesetzt." },
+  { op: "xor", syntax: "xor %rd %ra %rb", flags: "Z N C", text: "Bitweises exklusives ODER. C wird auf 0 gesetzt." },
+  { op: "not", syntax: "not %rd %rs", flags: "Z N C", text: "Invertiert alle Bits des Quellregisters. C wird auf 0 gesetzt." },
+  { op: "shl", syntax: "shl %rd %rs", flags: "Z N C", text: "Schiebt links um ein Bit. C ist das alte Bit 15." },
+  { op: "shr", syntax: "shr %rd %rs", flags: "Z N C", text: "Schiebt logisch rechts um ein Bit. C ist das alte Bit 0." },
+  { op: "rol", syntax: "rol %rd %rs", flags: "Z N C", text: "Rotiert links; das alte Bit 15 wird Bit 0 und C." },
+  { op: "ror", syntax: "ror %rd %rs", flags: "Z N C", text: "Rotiert rechts; das alte Bit 0 wird Bit 15 und C." },
+  { op: "rolc", syntax: "rolc %rd %rs", flags: "Z N C", text: "Rotiert links über Carry: altes C wird Bit 0, altes Bit 15 wird neues C." },
+  { op: "rorc", syntax: "rorc %rd %rs", flags: "Z N C", text: "Rotiert rechts über Carry: altes C wird Bit 15, altes Bit 0 wird neues C." },
+  { op: "ldb", syntax: "ldb %rd %ra", flags: "-", text: "Lädt ein Byte von der Adresse in %ra und schreibt es als 16-Bit-Wert in %rd." },
+  { op: "ldw", syntax: "ldw %rd %ra", flags: "-", text: "Lädt ein Big-Endian-Wort: mem[addr] ist das High-Byte, mem[addr+1] das Low-Byte." },
+  { op: "stb", syntax: "stb %ra %rs", flags: "-", text: "Speichert das Low-Byte von %rs an die Adresse in %ra." },
+  { op: "stw", syntax: "stw %ra %rs", flags: "-", text: "Speichert ein Big-Endian-Wort: High-Byte an addr, Low-Byte an addr+1." },
+  { op: "b", syntax: "b $off", flags: "-", text: "Springt immer relativ zur Adresse der Branch-Instruktion: Ziel = PC_der_Instruktion + 2*off." },
+  { op: "bz", syntax: "bz $off", flags: "liest Z", text: "Springt, wenn Z=1." },
+  { op: "bnz", syntax: "bnz $off", flags: "liest Z", text: "Springt, wenn Z=0." },
+  { op: "bn", syntax: "bn $off", flags: "liest N", text: "Springt, wenn N=1." },
+  { op: "bnn", syntax: "bnn $off", flags: "liest N", text: "Springt, wenn N=0." },
+  { op: "bc", syntax: "bc $off", flags: "liest C", text: "Springt, wenn C=1." },
+  { op: "bnc", syntax: "bnc $off", flags: "liest C", text: "Springt, wenn C=0." },
+];
+
+export function InstructionHelp() {
+  return (
+    <section className="help-panel" data-testid="instruction-help">
+      <div className="help-intro">
+        <h2>Instruktionshilfe</h2>
+        <p>
+          Register sind 16 Bit breit. Speicher ist byte-adressiert und Big-Endian. Immediates können dezimal oder mit
+          0x-Präfix hexadezimal geschrieben werden.
+        </p>
+      </div>
+      <table className="help-table">
+        <thead>
+          <tr>
+            <th>Instruktion</th>
+            <th>Syntax</th>
+            <th>Flags</th>
+            <th>Wirkung</th>
+          </tr>
+        </thead>
+        <tbody>
+          {INSTRUCTION_HELP.map((item) => (
+            <tr key={item.op}>
+              <td className="help-op">{item.op}</td>
+              <td className="help-syntax">{item.syntax}</td>
+              <td>{item.flags}</td>
+              <td>{item.text}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 function parseNumberInput(text: string): number | null {
   const t = text.trim().toLowerCase();
   if (t === "") return null;

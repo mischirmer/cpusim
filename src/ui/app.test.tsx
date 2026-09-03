@@ -31,6 +31,22 @@ describe("App", () => {
     expect(screen.queryAllByTestId("diagnostic-error")).toHaveLength(0);
   });
 
+  it("zeigt eine Instruktionshilfe mit Speicher- und Branch-Semantik", () => {
+    render(<App />);
+    expect(screen.queryByTestId("instruction-help")).toBeNull();
+    fireEvent.click(screen.getByText("Hilfe"));
+
+    const help = screen.getByTestId("instruction-help");
+    expect(help.textContent).toContain("ldw");
+    expect(help.textContent).toContain("Big-Endian-Wort");
+    expect(help.textContent).toContain("bc");
+    expect(help.textContent).toContain("Springt, wenn C=1");
+    expect(help.textContent).toContain("Ziel = PC_der_Instruktion + 2*off");
+
+    fireEvent.click(screen.getByText("Hilfe ausblenden"));
+    expect(screen.queryByTestId("instruction-help")).toBeNull();
+  });
+
   it("unterscheidet die Taktanzeige bei Navigation", () => {
     render(<App />);
     selectExample("raw");

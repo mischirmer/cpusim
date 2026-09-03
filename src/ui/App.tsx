@@ -15,6 +15,7 @@ import {
   ExamplePicker,
   MemoryEditor,
   MemoryView,
+  InstructionHelp,
 } from "./Panels";
 import { EXAMPLES } from "./examples";
 import "./App.css";
@@ -28,6 +29,7 @@ export function App() {
   const [initMemory, setInitMemory] = useState<Map<number, number>>(new Map());
   const [selectedCycle, setSelectedCycle] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const parsed = useMemo(() => parseAssembly(source), [source]);
   const hasErrors = parsed.diagnostics.some((d) => d.severity === "error");
@@ -90,8 +92,21 @@ export function App() {
           <h1>Pipeline-Simulator GdE1</h1>
           <p className="example-desc">{EXAMPLES.find((e) => e.id === exampleId)?.description}</p>
         </div>
-        <ExamplePicker value={exampleId} onChange={selectExample} />
+        <div className="header-actions">
+          <button
+            type="button"
+            className="help-toggle"
+            onClick={() => setShowHelp((visible) => !visible)}
+            aria-expanded={showHelp}
+            aria-controls="instruction-help"
+          >
+            {showHelp ? "Hilfe ausblenden" : "Hilfe"}
+          </button>
+          <ExamplePicker value={exampleId} onChange={selectExample} />
+        </div>
       </header>
+
+      {showHelp && <InstructionHelp />}
 
       <section className="editor-pane">
         <AssemblyEditor
